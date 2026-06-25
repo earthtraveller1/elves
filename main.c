@@ -1,0 +1,124 @@
+// https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+
+#define ELF_HEADER_SIZE 0x40
+#define PROGRAM_HEADER_SIZE 0x38
+#define SECTION_HEADER_SIZE 0x40
+
+void write_elf64_header(FILE* file, uint64_t e_shoff, uint16_t e_shnum, uint16_t e_shstrndx) {
+    char header[64] = {};
+
+    // The magic number
+    char magic_number[] = { 0x7F, 'E', 'L', 'F' };
+    memcpy(header, magic_number, sizeof(magic_number));
+
+    // To indicate that this is 64 bit
+    header[0x04] = 2;
+    // To indicate that this is little endian (that's the format of the integers)
+    header[0x05] = 1;
+    // The version of ELF - we are using 1
+    header[0x06] = 1;
+    // This is to indicate a System V ABI - though not sure if this really matters
+    // for what we are doing
+    header[0x07] = 0;
+    // ABI version - Linux apparently ignores this
+    header[0x08] = 0;
+
+    // Reserved padding bytes
+    memset(header + 0x09, 0, 7);
+
+    // This indicates that the file is a relocatable file (or object file)
+    uint16_t e_type = 0x01;
+    memcpy(header + 0x10, &e_type, sizeof(uint16_t));
+
+    // This indicates that we are on the AMD x86_64 ISA
+    uint16_t e_machine = 0x3E;
+    memcpy(header + 0x12, &e_machine, sizeof(uint16_t));
+
+    // This is the version of ELF - again, we are using 1
+    uint32_t e_version = 1;
+    memcpy(header + 0x14, &e_version, sizeof(uint32_t));
+
+    // The memory address entry point of the ELF - since we have none, this is 0
+    uint64_t e_entry = 0;
+    memcpy(header + 0x18, &e_entry, sizeof(uint64_t));
+
+    // Start of the program header table (we don't have one)
+    uint64_t e_phoff = 0;
+    memcpy(header + 0x20, &e_phoff, sizeof(uint64_t));
+
+    // Start of the section header table
+    memcpy(header + 0x28, &e_shoff, sizeof(uint64_t));
+
+    // Flags - this depends on the architecture
+    uint32_t e_flags = 0;
+    memcpy(header + 0x30, &e_flags, sizeof(uint32_t));
+
+    // The size of this header - for us, it is 64
+    uint16_t e_ehsize = ELF_HEADER_SIZE;
+    memcpy(header + 0x34, &e_ehsize, sizeof(uint16_t));
+
+    // The size of the program header (0x38 for 64-bit)
+    uint16_t e_phentsize = PROGRAM_HEADER_SIZE;
+    memcpy(header + 0x36, &e_phentsize, sizeof(uint16_t));
+
+    // The number of entries in the program header (we don't have any)
+    uint16_t e_phnum = 0;
+    memcpy(header + 0x38, &e_phnum, sizeof(uint16_t));
+
+    // The size of a section header table entry (0x40 for 64-bit)
+    uint16_t e_shentsize = SECTION_HEADER_SIZE;
+    memcpy(header + 0x3A, &e_shentsize, sizeof(uint16_t));
+
+    // The number of entries in the section header table
+    memcpy(header + 0x3C, &e_shnum, sizeof(uint16_t));
+
+    // Index of the section header table entry that contains the names 
+    // of all the sections
+    memcpy(header + 0x3E, &e_shstrndx, sizeof(e_shstrndx));
+
+    fwrite(header, 1, 64, file);
+}
+
+void write_section_header(uint32_t sh_name, uint32_t sh_type, uint64_t sh_flags, uint64_t sh_offset, uint64_t sh_size) {
+    char header[0x40] = {};
+
+    *(uint32_t*)header = sh_name;
+    *(uint32_t*)(header + 0x04) = sh_type;
+    *(uint32_t*)(header + 0x08) = sh_flags;
+
+    // The address - not applicable for us at the moment.
+    *(uint64_t*)(header + 0x10) = 0;
+
+    *(uint64_t*)(header + 0x18) = sh_offset;
+    *(uint64_t*)(header + 0x20) = sh_size;
+
+    // Section index of an associated section
+    *(uint32_t*)(header + 0x28) = 0;
+
+    // Extra info about the section.
+    *(uint32_t*)(header + 0x2C) = 0;
+
+    // The required alignment of the section - we do not care.
+    *(uint64_t*)(header + 0x30) = 0;
+
+    // The size of each entry in bytes for sections that contains fixed-size
+    // entires. This doesn't matter I don't think.
+    *(uint64_t*)(header + 0x38) = 0;
+}
+
+int main(void) {
+    FILE* file = fopen("test.o", "w");
+    if (!file) {
+        printf("Cannot open file: %s\n", strerror(errno));
+        return -1;
+    }
+
+    write_elf64_header(file, ELF_HEADER_SIZE, 2, 0);
+    fclose(file);
+    return 0;
+}
