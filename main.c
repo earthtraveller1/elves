@@ -9,6 +9,13 @@
 #define PROGRAM_HEADER_SIZE 0x38
 #define SECTION_HEADER_SIZE 0x40
 
+#define SHT_PROGBITS 0x1
+#define SHT_SYMTAB 0x2
+#define SHT_STRTAB 0x3
+
+#define SHF_WRITE 0x1
+#define SHF_STRINGS 0x20
+
 void write_elf64_header(FILE* file, uint64_t e_shoff, uint16_t e_shnum, uint16_t e_shstrndx) {
     char header[64] = {};
 
@@ -62,8 +69,8 @@ void write_elf64_header(FILE* file, uint64_t e_shoff, uint16_t e_shnum, uint16_t
     uint16_t e_ehsize = ELF_HEADER_SIZE;
     memcpy(header + 0x34, &e_ehsize, sizeof(uint16_t));
 
-    // The size of the program header (0x38 for 64-bit)
-    uint16_t e_phentsize = PROGRAM_HEADER_SIZE;
+    // The size of the program header (0 because we don't have one)
+    uint16_t e_phentsize = 0;
     memcpy(header + 0x36, &e_phentsize, sizeof(uint16_t));
 
     // The number of entries in the program header (we don't have any)
@@ -89,7 +96,7 @@ void write_section_header(FILE* file, uint32_t sh_name, uint32_t sh_type, uint64
 
     *(uint32_t*)header = sh_name;
     *(uint32_t*)(header + 0x04) = sh_type;
-    *(uint32_t*)(header + 0x08) = sh_flags;
+    *(uint64_t*)(header + 0x08) = sh_flags;
 
     // The address - not applicable for us at the moment.
     *(uint64_t*)(header + 0x10) = 0;
@@ -110,11 +117,11 @@ void write_section_header(FILE* file, uint32_t sh_name, uint32_t sh_type, uint64
     // entires. This doesn't matter I don't think.
     *(uint64_t*)(header + 0x38) = 0;
 
-    fwrite(header, 1, 24, file);
+    fwrite(header, 1, 0x40, file);
 }
 
 // https://refspecs.linuxbase.org/elf/gabi4+/ch4.symtab.html
-void write_symbol_table_entry(uint32_t st_name, uint8_t st_info, uint8_t st_other, uint16_t st_shndx, uint64_t st_value, uint64_t st_size) {
+void write_symbol_table_entry(FILE* file, uint32_t st_name, uint8_t st_info, uint8_t st_other, uint16_t st_shndx, uint64_t st_value, uint64_t st_size) {
     char symbol[24] = {};
     *(uint32_t*)symbol = st_name; // This is the index into a string section - it points to the first character of the string if I remember correctly
     *(uint8_t*)(symbol + 4) = st_info;
@@ -122,6 +129,8 @@ void write_symbol_table_entry(uint32_t st_name, uint8_t st_info, uint8_t st_othe
     *(uint16_t*)(symbol + 6) = st_shndx; // The index of the section that the symbol is in
     *(uint64_t*)(symbol + 8) = st_value; // The address of the actual symbol, relative to the start of the respective section I think
     *(uint64_t*)(symbol + 16) = st_size;
+
+    fwrite(symbol, 1, 24, file);
 }
 
 int main(void) {
@@ -131,8 +140,25 @@ int main(void) {
         return -1;
     }
 
-    write_elf64_header(file, ELF_HEADER_SIZE, 2, 0);
+    char section_names_section[] = ".shstrtab\0.text";
+    char generic_section[] = "The Quick Brown Fox jumped over the Lazy Dog";
 
+    uint64_t data_size = sizeof(section_names_section) + sizeof(generic_section);
+    uint64_t shoff = ELF_HEADER_SIZE + data_size;
+
+    write_elf64_header(file, shoff, 3, 1);
+
+    fwrite(section_names_section, 1, sizeof(section_names_section), file);
+    fwrite(generic_section, 1, sizeof(generic_section), file);
+
+    // Section 0: null section (must be all zeros per ELF spec)
+    char null_sh[0x40] = {};
+    fwrite(null_sh, 1, 0x40, file);
+
+    // Section 1: section header string table
+    write_section_header(file, 0, SHT_STRTAB, SHF_STRINGS, ELF_HEADER_SIZE, sizeof(section_names_section));
+    // Section 2: .text section
+    write_section_header(file, 10, SHT_PROGBITS, 0, ELF_HEADER_SIZE + sizeof(section_names_section), sizeof(generic_section));
 
     fclose(file);
     return 0;
