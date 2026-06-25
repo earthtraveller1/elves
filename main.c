@@ -84,7 +84,7 @@ void write_elf64_header(FILE* file, uint64_t e_shoff, uint16_t e_shnum, uint16_t
     fwrite(header, 1, 64, file);
 }
 
-void write_section_header(uint32_t sh_name, uint32_t sh_type, uint64_t sh_flags, uint64_t sh_offset, uint64_t sh_size) {
+void write_section_header(FILE* file, uint32_t sh_name, uint32_t sh_type, uint64_t sh_flags, uint64_t sh_offset, uint64_t sh_size) {
     char header[0x40] = {};
 
     *(uint32_t*)header = sh_name;
@@ -109,6 +109,19 @@ void write_section_header(uint32_t sh_name, uint32_t sh_type, uint64_t sh_flags,
     // The size of each entry in bytes for sections that contains fixed-size
     // entires. This doesn't matter I don't think.
     *(uint64_t*)(header + 0x38) = 0;
+
+    fwrite(header, 1, 24, file);
+}
+
+// https://refspecs.linuxbase.org/elf/gabi4+/ch4.symtab.html
+void write_symbol_table_entry(uint32_t st_name, uint8_t st_info, uint8_t st_other, uint16_t st_shndx, uint64_t st_value, uint64_t st_size) {
+    char symbol[24] = {};
+    *(uint32_t*)symbol = st_name; // This is the index into a string section - it points to the first character of the string if I remember correctly
+    *(uint8_t*)(symbol + 4) = st_info;
+    *(uint8_t*)(symbol + 5) = st_other;
+    *(uint16_t*)(symbol + 6) = st_shndx; // The index of the section that the symbol is in
+    *(uint64_t*)(symbol + 8) = st_value; // The address of the actual symbol, relative to the start of the respective section I think
+    *(uint64_t*)(symbol + 16) = st_size;
 }
 
 int main(void) {
@@ -119,6 +132,8 @@ int main(void) {
     }
 
     write_elf64_header(file, ELF_HEADER_SIZE, 2, 0);
+
+
     fclose(file);
     return 0;
 }
