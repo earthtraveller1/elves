@@ -1,4 +1,5 @@
 // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
+// https://refspecs.linuxfoundation.org/elf/elf.pdf
 
 #include <errno.h>
 #include <stdio.h>
@@ -151,13 +152,10 @@ int main(void) {
     fwrite(section_names_section, 1, sizeof(section_names_section), file);
     fwrite(generic_section, 1, sizeof(generic_section), file);
 
-    // Section 0: null section (must be all zeros per ELF spec)
-    char null_sh[0x40] = {};
-    fwrite(null_sh, 1, 0x40, file);
-
-    // Section 1: section header string table
+    // The specs require that the first section header has to be null
+    char null_header[0x40] = {};
+    fwrite(null_header, 1, 0x40, file);
     write_section_header(file, 0, SHT_STRTAB, SHF_STRINGS, ELF_HEADER_SIZE, sizeof(section_names_section));
-    // Section 2: .text section
     write_section_header(file, 10, SHT_PROGBITS, 0, ELF_HEADER_SIZE + sizeof(section_names_section), sizeof(generic_section));
 
     fclose(file);
